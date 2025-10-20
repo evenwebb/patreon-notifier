@@ -1,0 +1,8 @@
+# Core dependencies
+requests>=2.31.0
+
+# Notification library - supports 90+ services
+apprise>=1.7.0
+
+# Note: Desktop notifications use native OS tools (osascript, notify-send, PowerShell)
+# Apprise handles: Telegram, Discord, Email, Slack, Pushover, Pushbullet, and 85+ more!
