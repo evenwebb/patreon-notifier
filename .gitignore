@@ -1,11 +1,15 @@
 # Patreon Notification Monitor - Git Ignore
 
 # Sensitive files - DO NOT COMMIT
-cookies/
-*.json
+cookies/*.json
+
+# Allow cookies directory structure to be tracked
+!cookies/.gitignore
+!cookies/README.md
 
 # State files
 notification_state.json
+*.json
 
 # Python
 __pycache__/

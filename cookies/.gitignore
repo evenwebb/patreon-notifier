@@ -1,0 +1,5 @@
+# Ignore all cookie files to protect sensitive session data
+*.json
+
+# Allow this .gitignore file to be tracked
+!.gitignore
