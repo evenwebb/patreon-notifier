@@ -14,6 +14,11 @@ from typing import Tuple, Optional
 import config
 
 
+class CookieExpiredError(Exception):
+    """Raised when Patreon cookies have expired and need to be refreshed."""
+    pass
+
+
 def find_cookie_file() -> str:
     """
     Find the cookie file using smart detection.
@@ -141,7 +146,8 @@ def extract_csrf_token(session: requests.Session) -> str:
         CSRF signature token
 
     Raises:
-        ValueError: If CSRF token cannot be extracted
+        CookieExpiredError: If cookies have expired
+        ValueError: If CSRF token cannot be extracted for other reasons
     """
     response = session.get('https://www.patreon.com/home')
     response.raise_for_status()
@@ -154,14 +160,22 @@ def extract_csrf_token(session: requests.Session) -> str:
     )
 
     if not match:
-        raise ValueError("Could not find page data - authentication may have failed")
+        # If we can't find page data, cookies are likely expired
+        raise CookieExpiredError(
+            "Could not authenticate with Patreon - your cookies appear to have expired. "
+            "Please export fresh cookies from your browser and update your cookie file."
+        )
 
     data = json.loads(match.group(1))
     bootstrap = data.get('props', {}).get('pageProps', {}).get('bootstrapEnvelope', {})
 
     csrf = bootstrap.get('csrfSignature')
     if not csrf:
-        raise ValueError("Could not extract CSRF token")
+        # No CSRF token likely means cookies expired
+        raise CookieExpiredError(
+            "Could not extract CSRF token - your cookies appear to have expired. "
+            "Please export fresh cookies from your browser and update your cookie file."
+        )
 
     return csrf
 
@@ -178,7 +192,8 @@ def validate_authentication(session: requests.Session, csrf_token: str) -> dict:
         Dictionary with user info (id, name, email, pledge_count)
 
     Raises:
-        ValueError: If authentication validation fails
+        CookieExpiredError: If cookies have expired
+        ValueError: If authentication validation fails for other reasons
     """
     response = session.get('https://www.patreon.com/home')
     response.raise_for_status()
@@ -190,14 +205,22 @@ def validate_authentication(session: requests.Session, csrf_token: str) -> dict:
     )
 
     if not match:
-        raise ValueError("Authentication failed - could not load user data")
+        # Can't load user data likely means cookies expired
+        raise CookieExpiredError(
+            "Could not load user data - your cookies appear to have expired. "
+            "Please export fresh cookies from your browser and update your cookie file."
+        )
 
     data = json.loads(match.group(1))
     bootstrap = data.get('props', {}).get('pageProps', {}).get('bootstrapEnvelope', {})
 
     user_id = bootstrap.get('userId')
     if not user_id:
-        raise ValueError("Authentication failed - no user ID found")
+        # No user ID means not authenticated, likely expired cookies
+        raise CookieExpiredError(
+            "No user ID found - your cookies appear to have expired. "
+            "Please export fresh cookies from your browser and update your cookie file."
+        )
 
     common = bootstrap.get('commonBootstrap', {})
     user = common.get('currentUser', {}).get('data', {})
@@ -224,7 +247,10 @@ def setup_authenticated_session(cookies_path: str = None) -> Tuple[requests.Sess
         Tuple of (session, csrf_token, user_info)
 
     Raises:
-        Various exceptions if authentication fails at any step
+        FileNotFoundError: If cookie file not found
+        CookieExpiredError: If cookies have expired
+        ValueError: If cookie file is invalid or missing required cookies
+        requests.RequestException: If network requests fail
     """
     if cookies_path is None:
         cookies_path = find_cookie_file()

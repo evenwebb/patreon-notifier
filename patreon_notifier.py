@@ -70,6 +70,16 @@ class PatreonNotificationMonitor:
             print(f"  4. Save to {config.COOKIES_DIR}/{config.COOKIES_FILE}")
             self.health_monitor.record_auth_failure(e)
             return False
+        except auth.CookieExpiredError as e:
+            print(f"\n✗ Cookie Expiration Error: {e}")
+            print("\nYour cookies have expired. To fix this:")
+            print("  1. Open your browser and log into Patreon")
+            print("  2. Use a cookie export extension (Cookie-Editor or EditThisCookie)")
+            print("  3. Export cookies as JSON")
+            print(f"  4. Save to {config.COOKIES_DIR}/{config.COOKIES_FILE}")
+            print("  5. Restart the monitor")
+            self.health_monitor.record_cookie_expiration(e)
+            return False
         except Exception as e:
             print(f"\n✗ Authentication failed: {e}")
             if config.SHOW_FULL_ERRORS:
