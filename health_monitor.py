@@ -4,6 +4,7 @@ Health Monitor for Patreon Notification Monitor
 Tracks script health and sends alerts when failures occur.
 """
 
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -14,6 +15,12 @@ except ImportError:
     APPRISE_AVAILABLE = False
 
 import config
+
+logger = logging.getLogger(__name__)
+
+# Constants
+ALERT_COOLDOWN_SECONDS = 3600  # 1 hour
+COOKIE_EXPIRATION_COOLDOWN_SECONDS = 21600  # 6 hours
 
 
 class HealthMonitor:
@@ -43,7 +50,7 @@ class HealthMonitor:
         if self.enabled and APPRISE_AVAILABLE:
             self._init_apprise()
 
-    def _init_apprise(self):
+    def _init_apprise(self) -> None:
         """Initialize Apprise with health alert URLs."""
         self.apobj = apprise.Apprise()
 
@@ -55,14 +62,14 @@ class HealthMonitor:
                 if url and url.strip():
                     self.apobj.add(url)
 
-            if config.VERBOSE and len(self.apobj) > 0:
-                print(f"✓ Health monitoring enabled ({len(self.apobj)} alert service(s))")
+            if len(self.apobj) > 0:
+                logger.info(f"Health monitoring enabled ({len(self.apobj)} alert service(s))")
 
-    def record_auth_success(self):
+    def record_auth_success(self) -> None:
         """Record successful authentication."""
         self.auth_failures = 0
 
-    def record_auth_failure(self, error: Exception):
+    def record_auth_failure(self, error: Exception) -> None:
         """Record authentication failure."""
         if not self.enabled or not self.alert_on_auth_failure:
             return
@@ -78,7 +85,7 @@ class HealthMonitor:
                 'auth'
             )
 
-    def record_cookie_expiration(self, error: Exception):
+    def record_cookie_expiration(self, error: Exception) -> None:
         """
         Record cookie expiration and send immediate alert.
 
@@ -106,11 +113,11 @@ class HealthMonitor:
             'cookie_expiration'
         )
 
-    def record_api_success(self):
+    def record_api_success(self) -> None:
         """Record successful API request."""
         self.api_failures = 0
 
-    def record_api_failure(self, error: Exception):
+    def record_api_failure(self, error: Exception) -> None:
         """Record API request failure."""
         if not self.enabled or not self.alert_on_api_errors:
             return
@@ -126,11 +133,11 @@ class HealthMonitor:
                 'api'
             )
 
-    def record_notification_success(self):
+    def record_notification_success(self) -> None:
         """Record successful notification delivery."""
         self.notification_failures = 0
 
-    def record_notification_failure(self, error: Exception):
+    def record_notification_failure(self, error: Exception) -> None:
         """Record notification delivery failure."""
         if not self.enabled or not self.alert_on_notification_errors:
             return
@@ -146,7 +153,7 @@ class HealthMonitor:
                 'notification'
             )
 
-    def _send_alert(self, title: str, message: str, alert_type: str):
+    def _send_alert(self, title: str, message: str, alert_type: str) -> None:
         """
         Send health alert notification.
 
@@ -159,17 +166,16 @@ class HealthMonitor:
         now = datetime.now()
 
         if alert_type == 'auth' and self.last_auth_alert:
-            if (now - self.last_auth_alert).total_seconds() < 3600:  # 1 hour cooldown
+            if (now - self.last_auth_alert).total_seconds() < ALERT_COOLDOWN_SECONDS:
                 return
         elif alert_type == 'api' and self.last_api_alert:
-            if (now - self.last_api_alert).total_seconds() < 3600:
+            if (now - self.last_api_alert).total_seconds() < ALERT_COOLDOWN_SECONDS:
                 return
         elif alert_type == 'notification' and self.last_notification_alert:
-            if (now - self.last_notification_alert).total_seconds() < 3600:
+            if (now - self.last_notification_alert).total_seconds() < ALERT_COOLDOWN_SECONDS:
                 return
         elif alert_type == 'cookie_expiration' and self.last_cookie_expiration_alert:
-            # Longer cooldown for cookie expiration (6 hours) since it requires manual action
-            if (now - self.last_cookie_expiration_alert).total_seconds() < 21600:
+            if (now - self.last_cookie_expiration_alert).total_seconds() < COOKIE_EXPIRATION_COOLDOWN_SECONDS:
                 return
 
         # Send alert via Apprise
@@ -190,12 +196,10 @@ class HealthMonitor:
                 elif alert_type == 'cookie_expiration':
                     self.last_cookie_expiration_alert = now
 
-                if config.VERBOSE:
-                    print(f"⚠️  Health alert sent: {title}")
+                logger.warning(f"Health alert sent: {title}")
 
             except Exception as e:
-                print(f"Failed to send health alert: {e}")
+                logger.error(f"Failed to send health alert: {e}")
         else:
             # No alert services configured, just log
-            print(f"⚠️  HEALTH ALERT: {title}")
-            print(f"    {message}")
+            logger.warning(f"HEALTH ALERT: {title} - {message}")

@@ -5,7 +5,8 @@ Handles sending notifications via Apprise - supporting 90+ services:
 (Telegram, Discord, Email, Slack, Pushover, Pushbullet, SMS, and more!)
 """
 
-from typing import Dict, Any, List
+import logging
+from typing import Dict, Any, List, Optional
 
 try:
     import apprise
@@ -15,11 +16,13 @@ except ImportError:
 
 import config
 
+logger = logging.getLogger(__name__)
+
 
 class NotificationService:
     """Base class for notification services."""
 
-    def send(self, title: str, message: str, metadata: Dict[str, Any] = None):
+    def send(self, title: str, message: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """
         Send a notification.
 
@@ -48,7 +51,7 @@ class AppriseNotificationService(NotificationService):
     def __init__(self):
         """Initialize Apprise notification service."""
         if not APPRISE_AVAILABLE:
-            print("Warning: Apprise not installed. Install with: pip install apprise")
+            logger.warning("Apprise not installed. Install with: pip install apprise")
             self.apobj = None
             return
 
@@ -60,13 +63,11 @@ class AppriseNotificationService(NotificationService):
                 if url and url.strip():  # Skip empty URLs
                     self.apobj.add(url)
 
-            if config.VERBOSE:
-                print(f"✓ Loaded {len(self.apobj)} Apprise service(s)")
+            logger.info(f"Loaded {len(self.apobj)} Apprise service(s)")
         else:
-            if config.VERBOSE:
-                print("Note: No Apprise services configured (APPRISE_URLS is empty)")
+            logger.info("No Apprise services configured (APPRISE_URLS is empty)")
 
-    def send(self, title: str, message: str, metadata: Dict[str, Any] = None):
+    def send(self, title: str, message: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """Send notification via all configured Apprise services."""
         if not self.apobj or len(self.apobj) == 0:
             return  # No services configured
@@ -90,14 +91,13 @@ class AppriseNotificationService(NotificationService):
                 attach=attach,
             )
 
-            if config.VERBOSE:
-                if success:
-                    print(f"✓ Apprise notification sent to {len(self.apobj)} service(s)")
-                else:
-                    print("⚠️  Some Apprise notifications may have failed")
+            if success:
+                logger.info(f"Apprise notification sent to {len(self.apobj)} service(s)")
+            else:
+                logger.warning("Some Apprise notifications may have failed")
 
         except Exception as e:
-            print(f"Failed to send Apprise notification: {e}")
+            logger.error(f"Failed to send Apprise notification: {e}")
 
 
 class NotificationManager:
@@ -108,7 +108,7 @@ class NotificationManager:
         self.services: List[NotificationService] = []
         self._init_services()
 
-    def _init_services(self):
+    def _init_services(self) -> None:
         """Initialize enabled notification services."""
         # Apprise (handles all notification services)
         if APPRISE_AVAILABLE and hasattr(config, 'APPRISE_URLS') and config.APPRISE_URLS:
@@ -116,15 +116,14 @@ class NotificationManager:
             if apprise_service.apobj and len(apprise_service.apobj) > 0:
                 self.services.append(apprise_service)
         elif not APPRISE_AVAILABLE:
-            print("Error: Apprise not installed. Install with: pip install apprise")
+            logger.error("Apprise not installed. Install with: pip install apprise")
         elif not hasattr(config, 'APPRISE_URLS') or not config.APPRISE_URLS:
-            print("Error: No notification services configured (APPRISE_URLS is empty)")
+            logger.error("No notification services configured (APPRISE_URLS is empty)")
 
         if not self.services:
-            print("Warning: No notification services enabled!")
-            print("Add service URLs to APPRISE_URLS in config.py")
+            logger.warning("No notification services enabled! Add service URLs to APPRISE_URLS in config.py")
 
-    def send_notification(self, title: str, message: str, metadata: Dict[str, Any] = None):
+    def send_notification(self, title: str, message: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """
         Send notification via all enabled services.
 
@@ -137,4 +136,4 @@ class NotificationManager:
             try:
                 service.send(title, message, metadata)
             except Exception as e:
-                print(f"Error sending notification via {service.__class__.__name__}: {e}")
+                logger.error(f"Error sending notification via {service.__class__.__name__}: {e}")

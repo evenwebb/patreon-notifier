@@ -10,8 +10,9 @@ import os
 import time
 import json
 import re
+import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import requests
 
@@ -21,22 +22,34 @@ from state_manager import StateManager
 from notification_services import NotificationManager
 from health_monitor import HealthMonitor
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Constants
+UNKNOWN_CREATOR = "Unknown Creator"
+MESSAGE_MAX_LENGTH = 200
+MESSAGE_TRUNCATE_SUFFIX = "..."
+BANNER_WIDTH = 70
+KEYBOARD_INTERRUPT_EXIT_CODE = 130
+PATREON_API_STREAM_URL = "https://www.patreon.com/api/stream"
+PATREON_API_VERSION = "1.0"
+
 
 class PatreonNotificationMonitor:
     """Monitors Patreon notifications and sends alerts for new posts."""
 
     def __init__(self):
         """Initialize the notification monitor."""
-        self.session: requests.Session = None
-        self.csrf_token: str = None
-        self.user_info: dict = None
+        self.session: Optional[requests.Session] = None
+        self.csrf_token: Optional[str] = None
+        self.user_info: Optional[Dict[str, Any]] = None
         self.state_manager = StateManager()
         self.notification_manager = NotificationManager()
         self.health_monitor = HealthMonitor()
         self.user_map: Dict[str, str] = {}  # Map user IDs to names
         self.campaign_map: Dict[str, str] = {}  # Map campaign IDs to names
 
-    def _build_included_maps(self, included: List[Dict[str, Any]]):
+    def _build_included_maps(self, included: List[Dict[str, Any]]) -> None:
         """Build maps of user and campaign data from included array."""
         for item in included:
             if item['type'] == 'user':
@@ -51,7 +64,7 @@ class PatreonNotificationMonitor:
                 name = attrs.get('creation_name') or f"Campaign {campaign_id}"
                 self.campaign_map[campaign_id] = name
 
-    def authenticate(self):
+    def authenticate(self) -> bool:
         """Authenticate with Patreon using cookies."""
         print("Authenticating with Patreon...")
         try:
@@ -97,9 +110,9 @@ class PatreonNotificationMonitor:
         """
         try:
             # Fetch from Patreon stream API (this shows posts from creators you follow)
-            url = "https://www.patreon.com/api/stream"
+            url = PATREON_API_STREAM_URL
             params = {
-                'json-api-version': '1.0',
+                'json-api-version': PATREON_API_VERSION,
                 'include': 'user,campaign',  # Include user and campaign data
             }
 
@@ -123,17 +136,13 @@ class PatreonNotificationMonitor:
             # Build maps for user and campaign data
             self._build_included_maps(data.get('included', []))
 
-            if config.VERBOSE:
-                print(f"✓ Fetched {len(notifications)} notification(s)")
+            logger.info(f"Fetched {len(notifications)} notification(s)")
 
             self.health_monitor.record_api_success()
             return notifications
 
         except Exception as e:
-            print(f"✗ Failed to fetch notifications: {e}")
-            if config.SHOW_FULL_ERRORS:
-                import traceback
-                traceback.print_exc()
+            logger.error(f"Failed to fetch notifications: {e}", exc_info=config.SHOW_FULL_ERRORS)
             self.health_monitor.record_api_failure(e)
             return []
 
@@ -198,7 +207,7 @@ class PatreonNotificationMonitor:
                 'type': notification_type,
                 'post_type': post_type,
                 'subject': title,
-                'body': content[:200] if content else '',  # First 200 chars
+                'body': content[:MESSAGE_MAX_LENGTH] if content else '',  # First N chars
                 'creator': creator,
                 'url': url,
                 'thumbnail': thumbnail,
@@ -230,7 +239,7 @@ class PatreonNotificationMonitor:
             'has_video': has_video,
         }
 
-    def _extract_creator_from_post(self, attributes: dict) -> str:
+    def _extract_creator_from_post(self, attributes: Dict[str, Any]) -> str:
         """Extract creator name from post attributes."""
         # Try various fields that might contain creator info
         title = attributes.get('title', '')
@@ -257,7 +266,7 @@ class PatreonNotificationMonitor:
             if match:
                 return match.group(1).strip()
 
-        return "Unknown Creator"
+        return UNKNOWN_CREATOR
 
     def _is_new_post_notification(self, notification_type: str, subject: str, body: str) -> bool:
         """
@@ -281,7 +290,7 @@ class PatreonNotificationMonitor:
 
         return any(keyword in text for keyword in keywords)
 
-    def _detect_video(self, post_type: str, content: str, attributes: dict) -> bool:
+    def _detect_video(self, post_type: str, content: str, attributes: Dict[str, Any]) -> bool:
         """
         Detect if a post contains video content.
 
@@ -448,22 +457,19 @@ class PatreonNotificationMonitor:
             # Apply creator filter
             if not self._matches_creator_filter(parsed):
                 self.state_manager.mark_seen(parsed['id'])
-                if config.VERBOSE:
-                    print(f"  Filtered out (creator): {parsed['creator']} - {parsed['subject']}")
+                logger.debug(f"Filtered out (creator): {parsed['creator']} - {parsed['subject']}")
                 continue
 
             # Apply keyword filter
             if not self._matches_keyword_filter(parsed):
                 self.state_manager.mark_seen(parsed['id'])
-                if config.VERBOSE:
-                    print(f"  Filtered out (keyword): {parsed['creator']} - {parsed['subject']}")
+                logger.debug(f"Filtered out (keyword): {parsed['creator']} - {parsed['subject']}")
                 continue
 
             # Apply content type filter
             if not self._matches_content_filter(parsed):
                 self.state_manager.mark_seen(parsed['id'])
-                if config.VERBOSE:
-                    print(f"  Filtered out (content type): {parsed['creator']} - {parsed['subject']}")
+                logger.debug(f"Filtered out (content type): {parsed['creator']} - {parsed['subject']}")
                 continue
 
             # Send notification
@@ -473,7 +479,7 @@ class PatreonNotificationMonitor:
 
         return new_count
 
-    def _send_notification(self, notification: Dict[str, Any]):
+    def _send_notification(self, notification: Dict[str, Any]) -> None:
         """
         Send a notification via configured services.
 
@@ -486,8 +492,8 @@ class PatreonNotificationMonitor:
             message = notification['subject'] or notification['body']
 
             # Truncate message if too long
-            if len(message) > 200:
-                message = message[:197] + "..."
+            if len(message) > MESSAGE_MAX_LENGTH:
+                message = message[:MESSAGE_MAX_LENGTH - len(MESSAGE_TRUNCATE_SUFFIX)] + MESSAGE_TRUNCATE_SUFFIX
 
             # Prepare metadata
             metadata = {
@@ -501,22 +507,19 @@ class PatreonNotificationMonitor:
             self.notification_manager.send_notification(title, message, metadata)
             self.health_monitor.record_notification_success()
 
-            if config.VERBOSE:
-                print(f"\n✓ Sent notification:")
-                print(f"  Creator: {notification['creator']}")
-                print(f"  Subject: {notification['subject']}")
-                if notification['url']:
-                    print(f"  URL: {notification['url']}")
+            logger.info(f"Sent notification - Creator: {notification['creator']}, Subject: {notification['subject']}")
+            if notification['url']:
+                logger.debug(f"URL: {notification['url']}")
 
         except Exception as e:
-            print(f"✗ Failed to send notification: {e}")
+            logger.error(f"Failed to send notification: {e}")
             self.health_monitor.record_notification_failure(e)
 
-    def run_once(self):
+    def run_once(self) -> None:
         """Run the monitor once and exit."""
-        print("\n" + "="*70)
+        print("\n" + "=" * BANNER_WIDTH)
         print("Checking for new notifications...")
-        print("="*70)
+        print("=" * BANNER_WIDTH)
 
         notifications = self.fetch_notifications()
         if not notifications:
@@ -525,19 +528,19 @@ class PatreonNotificationMonitor:
 
         new_count = self.process_notifications(notifications)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * BANNER_WIDTH)
         if new_count > 0:
             print(f"✓ Sent {new_count} new notification(s)")
         else:
             print("✓ No new notifications")
-        print("="*70)
+        print("=" * BANNER_WIDTH)
 
-    def run_continuous(self):
+    def run_continuous(self) -> None:
         """Run the monitor continuously."""
-        print("\n" + "="*70)
+        print("\n" + "=" * BANNER_WIDTH)
         print(f"Starting continuous monitoring (checking every {config.CHECK_INTERVAL}s)")
         print("Press Ctrl+C to stop")
-        print("="*70 + "\n")
+        print("=" * BANNER_WIDTH + "\n")
 
         try:
             while True:
@@ -546,11 +549,10 @@ class PatreonNotificationMonitor:
                     new_count = self.process_notifications(notifications)
                     if new_count > 0:
                         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Sent {new_count} notification(s)")
-                    elif config.VERBOSE:
-                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] No new notifications")
+                    else:
+                        logger.debug(f"No new notifications")
                 else:
-                    if config.VERBOSE:
-                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Failed to fetch notifications")
+                    logger.warning("Failed to fetch notifications")
 
                 time.sleep(config.CHECK_INTERVAL)
 
@@ -558,7 +560,7 @@ class PatreonNotificationMonitor:
             print("\n\nStopping monitor...")
 
 
-def print_banner():
+def print_banner() -> None:
     """Print startup banner."""
     print()
     print("╔════════════════════════════════════════════════════════════════════╗")
@@ -568,9 +570,100 @@ def print_banner():
     print()
 
 
-def main():
+def validate_config() -> bool:
+    """
+    Validate configuration settings.
+
+    Returns:
+        True if configuration is valid, False otherwise
+    """
+    errors = []
+    warnings = []
+
+    # Check required attributes
+    required_attrs = [
+        'COOKIES_DIR', 'COOKIES_FILE', 'CHECK_INTERVAL', 'APPRISE_URLS',
+        'STATE_FILE', 'STATE_RETENTION_DAYS', 'REQUEST_TIMEOUT',
+        'VERBOSE', 'SHOW_FULL_ERRORS', 'USER_AGENT', 'ACCEPT_LANGUAGE',
+        'HEALTH_MONITORING', 'ENABLED_CREATORS', 'CREATOR_SETTINGS',
+        'GLOBAL_KEYWORDS', 'CONTENT_TYPE_FILTERS', 'ONLY_NEW_POSTS'
+    ]
+
+    for attr in required_attrs:
+        if not hasattr(config, attr):
+            errors.append(f"Missing required configuration: {attr}")
+
+    # Validate types and values
+    if hasattr(config, 'APPRISE_URLS'):
+        if not isinstance(config.APPRISE_URLS, list):
+            errors.append("APPRISE_URLS must be a list")
+        elif len(config.APPRISE_URLS) == 0:
+            warnings.append("APPRISE_URLS is empty - no notifications will be sent")
+
+    if hasattr(config, 'CHECK_INTERVAL'):
+        if not isinstance(config.CHECK_INTERVAL, (int, float)):
+            errors.append("CHECK_INTERVAL must be a number")
+        elif config.CHECK_INTERVAL < 0:
+            errors.append("CHECK_INTERVAL must be >= 0")
+
+    if hasattr(config, 'STATE_RETENTION_DAYS'):
+        if not isinstance(config.STATE_RETENTION_DAYS, (int, float)):
+            errors.append("STATE_RETENTION_DAYS must be a number")
+        elif config.STATE_RETENTION_DAYS <= 0:
+            errors.append("STATE_RETENTION_DAYS must be > 0")
+
+    if hasattr(config, 'REQUEST_TIMEOUT'):
+        if not isinstance(config.REQUEST_TIMEOUT, (int, float)):
+            errors.append("REQUEST_TIMEOUT must be a number")
+        elif config.REQUEST_TIMEOUT <= 0:
+            errors.append("REQUEST_TIMEOUT must be > 0")
+
+    if hasattr(config, 'HEALTH_MONITORING'):
+        if not isinstance(config.HEALTH_MONITORING, dict):
+            errors.append("HEALTH_MONITORING must be a dictionary")
+
+    if hasattr(config, 'ENABLED_CREATORS'):
+        if not isinstance(config.ENABLED_CREATORS, list):
+            errors.append("ENABLED_CREATORS must be a list")
+
+    if hasattr(config, 'CREATOR_SETTINGS'):
+        if not isinstance(config.CREATOR_SETTINGS, dict):
+            errors.append("CREATOR_SETTINGS must be a dictionary")
+
+    # Print results
+    if errors:
+        print("\n✗ Configuration errors:")
+        for error in errors:
+            print(f"  - {error}")
+        return False
+
+    if warnings:
+        print("\n⚠️  Configuration warnings:")
+        for warning in warnings:
+            print(f"  - {warning}")
+
+    return True
+
+
+def configure_logging() -> None:
+    """Configure logging based on config settings."""
+    log_level = logging.DEBUG if config.VERBOSE else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+
+def main() -> int:
     """Main entry point."""
+    configure_logging()
     print_banner()
+
+    # Validate configuration
+    if not validate_config():
+        print("\nPlease fix the configuration errors in config.py and try again.")
+        return 1
 
     # Initialize monitor
     monitor = PatreonNotificationMonitor()
@@ -595,10 +688,8 @@ if __name__ == '__main__':
         sys.exit(main())
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Exiting...")
-        sys.exit(130)
+        sys.exit(KEYBOARD_INTERRUPT_EXIT_CODE)
     except Exception as e:
+        logger.critical(f"Unexpected error: {e}", exc_info=config.SHOW_FULL_ERRORS)
         print(f"\n\n✗ Unexpected error: {e}")
-        if config.SHOW_FULL_ERRORS:
-            import traceback
-            traceback.print_exc()
         sys.exit(1)

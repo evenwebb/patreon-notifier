@@ -7,11 +7,19 @@ Handles loading cookies from JSON file and creating an authenticated session.
 import json
 import os
 import re
+import logging
 import requests
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
 
 import config
+
+logger = logging.getLogger(__name__)
+
+# Constants
+PATREON_DOMAIN = ".patreon.com"
+PATREON_HOME_URL = "https://www.patreon.com/home"
+PATREON_REFERER_URL = "https://www.patreon.com/"
 
 
 class CookieExpiredError(Exception):
@@ -70,7 +78,7 @@ def find_cookie_file() -> str:
         )
 
 
-def load_cookies_from_file(cookies_path: str = None) -> dict:
+def load_cookies_from_file(cookies_path: Optional[str] = None) -> Dict[str, str]:
     """
     Load cookies from a JSON file exported from a browser extension.
 
@@ -108,7 +116,7 @@ def load_cookies_from_file(cookies_path: str = None) -> dict:
     return cookies
 
 
-def create_authenticated_session(cookies: dict) -> requests.Session:
+def create_authenticated_session(cookies: Dict[str, str]) -> requests.Session:
     """
     Create a requests session with Patreon cookies.
 
@@ -122,14 +130,14 @@ def create_authenticated_session(cookies: dict) -> requests.Session:
 
     # Add cookies to session
     for name, value in cookies.items():
-        session.cookies.set(name, value, domain='.patreon.com')
+        session.cookies.set(name, value, domain=PATREON_DOMAIN)
 
     # Set default headers
     session.headers.update({
         'User-Agent': config.USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': config.ACCEPT_LANGUAGE,
-        'Referer': 'https://www.patreon.com/'
+        'Referer': PATREON_REFERER_URL
     })
 
     return session
@@ -149,7 +157,7 @@ def extract_csrf_token(session: requests.Session) -> str:
         CookieExpiredError: If cookies have expired
         ValueError: If CSRF token cannot be extracted for other reasons
     """
-    response = session.get('https://www.patreon.com/home')
+    response = session.get(PATREON_HOME_URL)
     response.raise_for_status()
 
     # Extract __NEXT_DATA__ JSON
@@ -180,7 +188,7 @@ def extract_csrf_token(session: requests.Session) -> str:
     return csrf
 
 
-def validate_authentication(session: requests.Session, csrf_token: str) -> dict:
+def validate_authentication(session: requests.Session, csrf_token: str) -> Dict[str, Any]:
     """
     Validate that the session is properly authenticated.
 
@@ -195,7 +203,7 @@ def validate_authentication(session: requests.Session, csrf_token: str) -> dict:
         CookieExpiredError: If cookies have expired
         ValueError: If authentication validation fails for other reasons
     """
-    response = session.get('https://www.patreon.com/home')
+    response = session.get(PATREON_HOME_URL)
     response.raise_for_status()
 
     match = re.search(
@@ -236,7 +244,7 @@ def validate_authentication(session: requests.Session, csrf_token: str) -> dict:
     }
 
 
-def setup_authenticated_session(cookies_path: str = None) -> Tuple[requests.Session, str, dict]:
+def setup_authenticated_session(cookies_path: Optional[str] = None) -> Tuple[requests.Session, str, Dict[str, Any]]:
     """
     Complete authentication setup: load cookies, create session, get CSRF token, validate.
 
