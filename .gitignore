@@ -9,7 +9,6 @@ cookies/*.json
 
 # State files
 notification_state.json
-*.json
 
 # Python
 __pycache__/
@@ -33,7 +32,13 @@ wheels/
 .installed.cfg
 *.egg
 
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/

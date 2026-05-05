@@ -1,0 +1,32 @@
+{
+  "data": [
+    {
+      "id": "post-1",
+      "type": "post",
+      "attributes": {
+        "title": "Hello",
+        "content": "<p>Teaser body</p>",
+        "post_type": "text_only",
+        "published_at": "2026-05-01T12:00:00.000Z",
+        "patreon_url": "https://www.patreon.com/posts/post-1-only-patreon-url"
+      },
+      "relationships": {
+        "user": { "data": { "id": "user-1", "type": "user" } },
+        "campaign": { "data": { "id": "camp-1", "type": "campaign" } }
+      }
+    }
+  ],
+  "included": [
+    {
+      "id": "user-1",
+      "type": "user",
+      "attributes": { "full_name": "Fixture Creator", "vanity": "fixture" }
+    },
+    {
+      "id": "camp-1",
+      "type": "campaign",
+      "attributes": { "creation_name": "Fixture Campaign" }
+    }
+  ],
+  "links": {}
+}

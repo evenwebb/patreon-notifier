@@ -65,6 +65,42 @@ APPRISE_URLS = [
 ]
 
 # ============================================================================
+# NOTIFICATION TEXT (Python format strings — use {placeholder} names below)
+# ============================================================================
+#
+# Available placeholders:
+#   {creator}           Creator display name (often the person; may match campaign)
+#   {campaign}          Campaign / project name from Patreon (creation_name), if known
+#   {subject}           Post title (may be empty for some notification types)
+#   {body}              Teaser / description text (truncated by the monitor)
+#   {title}             Same as {subject}
+#   {description}       Same as {body}
+#   {url}               Link to the post on Patreon (if provided by the API)
+#   {thumbnail}         Thumbnail or embed image URL, if any (empty string otherwise)
+#   {post_type}         Patreon post_type (e.g. video_embed, text_only)
+#   {created_at}        published_at / created_at from the API
+#   {notification_type} Stream item type (e.g. post)
+#   {has_video}         "true" or "false"
+#   {subject_or_body}   {subject} if non-empty, otherwise {body} (legacy default body)
+#
+# Use literal braces as {{ and }}. If NOTIFICATION_APPEND_URL_TO_BODY is True, the post
+# URL is appended after the body when it is not already present (handy if you omit {url}).
+#
+# Per-creator overrides (optional, same keys as global; creator string must match exactly):
+#   notification_title_template
+#   notification_body_template
+#   notification_append_url_to_body   (bool)
+
+NOTIFICATION_TITLE_TEMPLATE = "New Patreon Post: {creator}"
+NOTIFICATION_BODY_TEMPLATE = "{subject_or_body}"
+NOTIFICATION_APPEND_URL_TO_BODY = True
+
+# Example — title and rich body with link inline:
+# NOTIFICATION_TITLE_TEMPLATE = "🎨 {creator}: {subject}"
+# NOTIFICATION_BODY_TEMPLATE = "{description}\n\n{url}"
+# NOTIFICATION_APPEND_URL_TO_BODY = False
+
+# ============================================================================
 # FILTERING OPTIONS
 # ============================================================================
 
@@ -80,7 +116,11 @@ CREATOR_SETTINGS = {
     #     'enabled': True,
     #     'keywords': ['announcement', 'exclusive'],
     #     'video_only': False,
-    #     'content_types': [],  # ['video_embed', 'image_file', 'text_only', 'audio_file']
+    #     'content_types': [],
+    #     # ^ add content types here: ['video_embed', 'image_file', 'text_only', 'audio_file']
+    #     'notification_title_template': '🎬 {campaign}: {subject}',
+    #     'notification_body_template': '{description}\n{url}',
+    #     'notification_append_url_to_body': False,
     # },
 }
 
@@ -122,8 +162,20 @@ STATE_RETENTION_DAYS = 30
 
 # Advanced settings
 REQUEST_TIMEOUT = 30
+
+# Stream fetch: retries and pagination (optional — defaults are sensible)
+FETCH_MAX_RETRIES = 3
+FETCH_RETRY_BACKOFF_SECONDS = 2.0
+FETCH_MAX_STREAM_PAGES = 10
+
 VERBOSE = True
 SHOW_FULL_ERRORS = True
+
+# Logging: optional rotating log file (empty string = stderr only)
+LOG_FILE = ""  # e.g. "logs/patreon-notifier.log"
+LOG_MAX_BYTES = 10 * 1024 * 1024  # rotate after this size (bytes)
+LOG_BACKUP_COUNT = 5  # keep this many rotated files (.1, .2, ...)
+
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "

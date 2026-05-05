@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patreon-notifier"
+version = "0.1.0"
+description = "Monitor Patreon stream and send notifications via Apprise."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-only" }
+authors = [{ name = "evenwebb" }]
+keywords = ["patreon", "notifications", "apprise", "monitor"]
+dependencies = [
+  "requests>=2.31.0",
+  "apprise>=1.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/evenwebb/patreon-notifier"
+Repository = "https://github.com/evenwebb/patreon-notifier"
+
+[project.scripts]
+patreon-notifier = "patreon_notifier.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["patreon_notifier*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["patreon_notifier"]
+

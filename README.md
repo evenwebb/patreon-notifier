@@ -1,314 +1,236 @@
-# Patreon Notification Monitor
+<div align="center">
 
-A Python script that monitors Patreon for new posts from your subscribed creators and sends you notifications through various channels.
+# Patreon Notifier
 
-## Features
+**Monitor Patreon and send notifications via [Apprise](https://github.com/caronc/apprise).**
 
-- **Multiple Notification Services**: 90+ services via Apprise (Telegram, Discord, Email, Slack, Pushover, SMS, and more!)
-- **Smart State Management**: Tracks seen notifications to avoid duplicates
-- **Advanced Filtering**: Per-creator filters, keyword matching, content type filtering, video detection
-- **Health Monitoring**: Alerts you when authentication or API errors occur
-- **Flexible Configuration**: Customize notification preferences and filtering rules
-- **Continuous or One-Time Monitoring**: Run once or continuously check for new posts
-- **Cookie-Based Authentication**: Uses your existing Patreon session from browser cookies
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](https://github.com/evenwebb/patreon-notifier/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Apprise](https://img.shields.io/badge/notifications-Apprise-9cf.svg)](https://github.com/caronc/apprise)
 
-## Notification Services
+[Quick start](#quick-start) · [Configuration](#configuration) · [Usage](#usage) · [Troubleshooting](#troubleshooting) · [Security](#security) · [License](#license)
 
-The script supports notification through **Apprise** - a universal notification library supporting 90+ services:
+</div>
 
-- **Messaging**: Telegram, Discord, Slack, Microsoft Teams, Mattermost
-- **Mobile Push**: Pushover, Pushbullet, Pushy, Notify My Android
-- **Email**: Gmail, Outlook, SendGrid, Mailgun, and any SMTP server
-- **SMS**: Twilio, MessageBird, Nexmo, AWS SNS
-- **And 85+ more!** - See [full list](https://github.com/caronc/apprise/wiki)
+---
 
-## Installation
+## What this is
 
-### Prerequisites
+Patreon Notifier is a small **Python CLI** that uses your **existing Patreon browser session** (exported cookies), checks your Patreon stream for new posts, and sends notifications via Apprise (Telegram, Discord, email, Slack, Pushover, and more).
 
-- Python 3.7 or higher
-- Patreon account with active subscriptions
-- Browser with cookie export extension
+> **Note:** This project uses Patreon’s web session and internal-style API endpoints. Patreon may change behavior without notice; treat this as a **best-effort personal automation**, not a guaranteed integration.
 
-### Setup
+> **Compatibility:** The login page payload and stream API shapes described in this README were **checked and working on 5 May 2026**. Patreon can change cookies, HTML, or JSON at any time—if something stops working, export fresh cookies, pull the latest release, and open an issue if it still fails.
 
-1. **Install Dependencies**
+---
+
+## Quick start
+
+### 1) Install (recommended)
+
+```bash
+git clone https://github.com/evenwebb/patreon-notifier.git
+cd patreon-notifier
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m pip install -U pip
+pip install -e ".[dev]"
+```
+
+If you prefer **`requirements.txt`** for dependencies only, install them and run the module from the repo root (or use `pip install -e .` so the `patreon-notifier` command is available):
 
 ```bash
 pip install -r requirements.txt
+python -m patreon_notifier   # from the cloned repo directory
+# optional: pip install -e . --no-deps   # adds the patreon-notifier console script
 ```
 
-This installs:
-- `requests` - HTTP library for Patreon API
-- `apprise` - Universal notification library
+### 2) Export cookies
 
-2. **Export Patreon Cookies**
+- Log into Patreon in your browser
+- Export cookies as JSON using a browser extension (e.g. [Cookie-Editor](https://cookie-editor.com/))
+- Save to `cookies/cookies.json`
 
-   - Install a cookie export browser extension:
-     - Chrome/Edge: [Cookie-Editor](https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm)
-     - Firefox: [Cookie-Editor](https://addons.mozilla.org/en-US/firefox/addon/cookie-editor/)
+See [`cookies/README.md`](cookies/README.md).
 
-   - Log into Patreon in your browser
-   - Open the cookie extension and export cookies as JSON
-   - Save the file to `cookies/cookies.json`
+### 3) Create `config.py`
 
-3. **Configure Notifications**
-
-Edit `config.py` to customize your notification preferences:
-
-```python
-# Apprise URLs - add as many services as you want!
-APPRISE_URLS = [
-    'tgram://bot_token/chat_id',           # Telegram
-    'discord://webhook_id/webhook_token',   # Discord
-    'mailto://user:pass@gmail.com',        # Email
-    # See 90+ more: https://github.com/caronc/apprise/wiki
-]
-
-# Check interval (0 = run once, >0 = continuous monitoring)
-CHECK_INTERVAL = 300  # Check every 5 minutes
-
-# Filtering options
-ENABLED_CREATORS = []  # Whitelist specific creators (empty = all)
-GLOBAL_KEYWORDS = []   # Only notify for posts matching keywords
-CONTENT_TYPE_FILTERS = {
-    'video_only': False,    # Only notify for video posts
-    'exclude_text': False,  # Exclude text-only posts
-}
+```bash
+cp config.example.py config.py
 ```
 
-### Setting Up Notification Services
+Then edit `config.py` and set **at least one** Apprise URL in `APPRISE_URLS`.
 
-All services use simple URL configuration via Apprise. Here are the most popular:
+### 4) Run
 
-**Telegram:**
-1. Create a bot with [@BotFather](https://t.me/botfather) → get `bot_token`
-2. Get your `chat_id` from [@userinfobot](https://t.me/userinfobot)
-3. Add to config: `'tgram://bot_token/chat_id'`
+After `pip install -e .`, use the installed command (or run as a module):
 
-**Discord:**
-1. Server Settings → Integrations → Webhooks → New Webhook
-2. Copy webhook URL (format: `https://discord.com/api/webhooks/ID/TOKEN`)
-3. Add to config: `'discord://ID/TOKEN'`
+```bash
+patreon-notifier
+# or: python -m patreon_notifier
+```
 
-**Email (Gmail):**
-1. Enable 2FA and create [app-specific password](https://myaccount.google.com/apppasswords)
-2. Add to config: `'mailto://username:app_password@gmail.com'`
+---
 
-**Slack:**
-1. Create app at [api.slack.com](https://api.slack.com/apps)
-2. Get tokens from OAuth & Permissions
-3. Add to config: `'slack://token_a/token_b/token_c/#channel'`
+## Configuration
 
-**Pushover:**
-1. Sign up at [pushover.net](https://pushover.net/)
-2. Add to config: `'pover://user_key@token'`
+- **Primary config**: `config.py` (gitignored)
+- **Template**: `config.example.py`
+- **Fallback behavior**: if `config.py` is missing, the app will load `config.example.py` (useful for tests/CI). In practice, you should create `config.py` for real notifications.
 
-**Pushbullet:**
-1. Get access token from [Settings](https://www.pushbullet.com/#settings)
-2. Add to config: `'pbul://access_token'`
+Key settings:
 
-**87+ More Services:**
-- See [Apprise Wiki](https://github.com/caronc/apprise/wiki) for complete documentation
-- Services include: Microsoft Teams, Mastodon, Matrix, IFTTT, Gotify, Twilio SMS, AWS SNS, and many more!
+| Setting | Purpose |
+|---------|---------|
+| `APPRISE_URLS` | Notification destinations (must be non-empty to send alerts) |
+| `CHECK_INTERVAL` | Seconds between checks (`0` = run once) |
+| `VERBOSE` | Enable debug logging |
+| `LOG_FILE` | Optional path for **rotating** log file; empty = stderr only |
+| `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | Rotation size and number of backups (when `LOG_FILE` is set) |
+| `ENABLED_CREATORS` / `CREATOR_SETTINGS` / `GLOBAL_KEYWORDS` | Filtering |
+| `CONTENT_TYPE_FILTERS` | Content-type filters (video-only, exclude text, etc.) |
+| `HEALTH_MONITORING` / `HEALTH_APPRISE_URLS` | Optional health alerts |
+| `NOTIFICATION_TITLE_TEMPLATE` / `NOTIFICATION_BODY_TEMPLATE` | Apprise title/body ([templates below](#notification-templates)) |
+| `NOTIFICATION_APPEND_URL_TO_BODY` | If true, append post URL when it is not already in the body |
+| `STATE_FILE` / `STATE_RETENTION_DAYS` | Dedupe store path and pruning |
+| `FETCH_MAX_RETRIES` / `FETCH_RETRY_BACKOFF_SECONDS` / `FETCH_MAX_STREAM_PAGES` | Stream request retries and pagination |
+| `COOKIES_DIR` / `COOKIES_FILE` | Where cookie JSON is loaded from |
+
+Apprise URL formats: [Apprise wiki](https://github.com/caronc/apprise/wiki).
+
+**Code layout:** installable package `patreon_notifier/` — `cli.py` (entry), `monitor.py` (stream + filters), `notification_format.py` (templates), `auth.py`, `state.py`, `notifications.py`, `health.py`, `config_loader.py`, `types.py`, `constants.py`.
+
+### Notification templates
+
+Title and body are Python [format strings](https://docs.python.org/3/library/string.html#format-string-syntax): use `{placeholder}` names, and `{{` / `}}` for literal braces. Unknown placeholders become empty (no crash).
+
+| Placeholder | Value |
+|-------------|--------|
+| `{creator}` | Creator display name |
+| `{campaign}` | Campaign / project name when the API includes it |
+| `{subject}` / `{title}` | Post title |
+| `{body}` / `{description}` | Teaser or description (length-limited when parsed) |
+| `{url}` | Post link on Patreon |
+| `{thumbnail}` | Image URL when available |
+| `{post_type}` | e.g. `text_only`, `video_embed` |
+| `{created_at}` | Timestamp from the API |
+| `{notification_type}` | Stream item type (e.g. `post`) |
+| `{has_video}` | `true` or `false` |
+| `{subject_or_body}` | Title if set, otherwise body text |
+
+**Global defaults** are `NOTIFICATION_TITLE_TEMPLATE`, `NOTIFICATION_BODY_TEMPLATE`, and `NOTIFICATION_APPEND_URL_TO_BODY` in `config.py`.
+
+**Per-creator overrides:** in `CREATOR_SETTINGS`, under the creator’s exact name, you may set `notification_title_template`, `notification_body_template`, and/or `notification_append_url_to_body` (bool). See `config.example.py`.
+
+**Dry check (no Patreon):** validate templates against built-in sample data:
+
+```bash
+patreon-notifier --test-templates
+```
+
+---
 
 ## Usage
 
-### Run Once (Check for new posts and exit)
+### One-shot
+
+Run once (either set `CHECK_INTERVAL = 0` or use `--once`):
 
 ```bash
-python patreon_notifier.py
+patreon-notifier --once
 ```
 
-Set `CHECK_INTERVAL = 0` in `config.py` to run in one-time mode.
+### Continuous loop
 
-### Continuous Monitoring
+Set `CHECK_INTERVAL` to a positive number (seconds), e.g. `300` for every 5 minutes:
 
 ```bash
-python patreon_notifier.py
+patreon-notifier
 ```
 
-Set `CHECK_INTERVAL = 300` (or any value in seconds) in `config.py` to run continuously.
-
-### Run with Cron (Linux/macOS)
-
-To check for new posts every 10 minutes:
+### Verbose logging
 
 ```bash
-# Edit crontab
-crontab -e
-
-# Add this line (adjust path to your installation)
-*/10 * * * * cd /path/to/patreon-notifications && python3 patreon_notifier.py >> monitor.log 2>&1
+patreon-notifier --verbose
 ```
 
-### Run with Task Scheduler (Windows)
+### Dry run (no Apprise)
 
-1. Open Task Scheduler
-2. Create a new task
-3. Set trigger to run every X minutes
-4. Set action to run: `python.exe "C:\path\to\patreon_notifier.py"`
+Log what would be notified without calling Apprise (useful with `VERBOSE = True`):
 
-## Configuration Options
-
-### Main Settings
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `CHECK_INTERVAL` | Seconds between checks (0 = run once) | 300 |
-| `ONLY_NEW_POSTS` | Only notify for new posts | True |
-| `APPRISE_URLS` | List of Apprise service URLs | [] |
-| `STATE_RETENTION_DAYS` | Days to keep seen notifications | 30 |
-
-### Filtering Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `ENABLED_CREATORS` | Whitelist of creator names (empty = all) | [] |
-| `CREATOR_SETTINGS` | Per-creator advanced settings (keywords, video_only, content_types) | {} |
-| `GLOBAL_KEYWORDS` | Only notify if post title/body contains keywords | [] |
-| `CONTENT_TYPE_FILTERS` | Filter by content type (video_only, image_only, text_only, audio_only, exclude_text) | all False |
-
-### Health Monitoring
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `HEALTH_MONITORING` | Enable health monitoring and alerts | enabled: True |
-| `HEALTH_APPRISE_URLS` | Separate Apprise URLs for health alerts | [] |
-
-### State Management
-
-The script maintains a `notification_state.json` file that tracks which notifications you've already seen. This prevents duplicate notifications.
-
-- **Location**: `notification_state.json` (in script directory)
-- **Auto-pruning**: Entries older than `STATE_RETENTION_DAYS` are automatically removed
-- **Reset**: Delete the file to reset and get notifications for all posts again
-
-## File Structure
-
+```bash
+patreon-notifier --once --dry-run --verbose
 ```
-patreon-notifications/
-├── auth.py                      # Authentication module
-├── config.py                    # Configuration settings
-├── config.example.py           # Example configuration template
-├── patreon_notifier.py         # Main script
-├── notification_services.py    # Notification service implementations (Apprise)
-├── health_monitor.py           # Health monitoring and alerting
-├── state_manager.py            # State tracking for seen notifications
-├── notification_state.json     # State file (created automatically)
-├── requirements.txt            # Python dependencies
-├── README.md                   # This file
-├── QUICKSTART.md              # Quick start guide
-├── .gitignore                 # Git ignore rules
-└── cookies/                   # Cookie storage directory
-    └── cookies.json          # Your Patreon cookies
+
+### Quiet mode
+
+Less console noise (warnings/errors only in logs unless combined with `--verbose`):
+
+```bash
+patreon-notifier --quiet
 ```
+
+### Test notification templates
+
+```bash
+patreon-notifier --test-templates
+```
+
+### Cron (example)
+
+```bash
+*/10 * * * * cd /path/to/patreon-notifier && /path/to/.venv/bin/patreon-notifier >> monitor.log 2>&1
+```
+
+---
+
+## Security
+
+- **`cookies/*.json`** and **`config.py`** contain secrets. Do not commit them (see `.gitignore`).
+- Prefer restricted file permissions on your cookie and config files on disk.
+- Use app passwords or scoped tokens where your notification provider allows (e.g. email).
+
+---
 
 ## Troubleshooting
 
-### Authentication Failed
+<details>
+<summary><strong>Authentication failed or “cookie expired”</strong></summary>
 
-- Make sure your cookies are up to date
-- Re-export cookies from your browser
-- Ensure `session_id` cookie is present
+- Re-export cookies while logged into Patreon in the browser.
+- Ensure important session cookies (e.g. `session_id`) are present in the export.
+- Confirm the file path matches `COOKIES_DIR` / `COOKIES_FILE` in `config.py`.
 
-### No Notifications Received
+</details>
 
-- Check that `APPRISE_URLS` is configured with at least one service
-- Verify service-specific settings (API keys, URLs, etc.)
-- Run with `VERBOSE = True` in config.py for detailed logs
-- Check if filtering rules are excluding all posts
+<details>
+<summary><strong>No notifications received</strong></summary>
 
-### Apprise Services Not Working
+- Confirm `APPRISE_URLS` is non-empty and URLs match [Apprise docs](https://github.com/caronc/apprise/wiki).
+- Test a URL: `apprise -vv -t "Test" -b "Hello" 'your://url'`.
+- Set `VERBOSE = True` and check console output.
+- Check filters: `ENABLED_CREATORS`, `GLOBAL_KEYWORDS`, and `CONTENT_TYPE_FILTERS` may hide everything.
 
-- Verify your service URLs are correct (check [Apprise Wiki](https://github.com/caronc/apprise/wiki))
-- Make sure `apprise` is installed: `pip install apprise`
-- Check console for specific error messages
-- Test your URL with the Apprise CLI: `apprise -vv -t "Test" -b "Message" YOUR_URL`
+</details>
 
-### Health Monitoring Alerts
+<details>
+<summary><strong>Duplicate or missing posts</strong></summary>
 
-- Health alerts are sent after `max_consecutive_failures` (default: 3) consecutive errors
-- Alerts have a 1-hour cooldown to prevent spam
-- Configure `HEALTH_APPRISE_URLS` for separate alert channels
+- Duplicates: state file may be out of sync; inspect `notification_state.json`.
+- Missing: old entries are pruned after `STATE_RETENTION_DAYS`; increase if needed.
 
-## Advanced Usage
+</details>
 
-### Per-Creator Filtering
+<details>
+<summary><strong>API or layout changes on Patreon’s side</strong></summary>
 
-Configure advanced per-creator settings:
+- Symptoms: HTTP errors, empty data, or parsing issues after Patreon updates.
+- Mitigation: update cookies, pull the latest script, and open an issue with logs (redact secrets).
 
-```python
-CREATOR_SETTINGS = {
-    'CreatorName': {
-        'enabled': True,
-        'keywords': ['announcement', 'exclusive'],  # Only notify for posts with these keywords
-        'video_only': True,                         # Only notify for video posts
-        'content_types': ['video_embed'],           # Allowed content types
-    },
-}
-```
+</details>
 
-### Keyword Filtering
-
-Filter notifications by keywords (case-insensitive):
-
-```python
-# Global keywords (applies to all creators)
-GLOBAL_KEYWORDS = ['announcement', 'new release', 'exclusive']
-
-# Per-creator keywords (in CREATOR_SETTINGS)
-CREATOR_SETTINGS = {
-    'CreatorName': {
-        'keywords': ['Q&A', 'behind the scenes'],
-    },
-}
-```
-
-### Content Type Filtering
-
-Filter by media type:
-
-```python
-CONTENT_TYPE_FILTERS = {
-    'video_only': True,      # Only video posts
-    'exclude_text': True,    # Exclude text-only posts (get media posts only)
-}
-```
-
-### Video Detection
-
-The script automatically detects video content from:
-- Post type (video_embed)
-- Embedded video providers (YouTube, Vimeo, Twitch)
-- Video URLs in post content
-
-### Custom Notification Format
-
-Modify notification format in `patreon_notifier.py`:
-
-```python
-def _send_notification(self, notification: Dict[str, Any]):
-    title = f"New Post: {notification['creator']}"
-    message = notification['subject']
-```
-
-## Security Notes
-
-- **Cookie Security**: Your `cookies.json` file contains authentication credentials. Keep it secure and don't commit it to git.
-- **API Tokens**: Store sensitive tokens (email passwords, bot tokens) securely
-- **File Permissions**: Consider restricting file permissions on config files
-
-## Dependencies
-
-- `requests` - HTTP library for Patreon API calls
-- `apprise` - Universal notification library supporting 90+ services
-- Standard library modules for desktop notifications (no additional packages needed)
+---
 
 ## License
 
-This script is provided as-is for personal use.
-
-## Credits
-
-A self-contained notification system for Patreon with built-in authentication.
+This project is licensed under the **GNU General Public License v3.0** — see [`LICENSE`](LICENSE).
