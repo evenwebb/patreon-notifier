@@ -16,7 +16,13 @@ def _load_module_from_path(module_name: str, path: Path) -> ModuleType:
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load module {module_name!r} from {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as e:
+        raise ImportError(
+            f"Error in configuration file {path}: {e}\n"
+            f"Please check {path.name} for syntax errors or missing imports."
+        ) from e
     return module
 
 

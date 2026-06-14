@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from importlib.metadata import version
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import List, Optional, cast
@@ -291,6 +292,16 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Validate notification templates with sample data and exit (no Patreon).",
     )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show notification statistics and exit.",
+    )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Show version and exit.",
+    )
     return parser.parse_args(argv)
 
 
@@ -309,6 +320,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not validate_config():
         print("\nPlease fix the configuration errors in config.py and try again.")
         return 1
+
+    if getattr(args, "version", False):
+        try:
+            print(f"patreon-notifier {version('patreon-notifier')}")
+        except Exception:
+            print("patreon-notifier (unknown version)")
+        return 0
+
+    if getattr(args, "stats", False):
+        from patreon_notifier.state import StateManager
+        sm = StateManager()
+        print(f"\n=== Patreon Notifier Statistics ===")
+        print(f"Seen notifications: {len(sm.seen_ids)}")
+        print(f"Tracked timestamps: {len(sm.seen_timestamps)}")
+        return 0
 
     if getattr(args, "test_templates", False):
         configure_logging(quiet=True)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
@@ -85,9 +86,10 @@ class PatreonNotificationMonitor:
         self._user_out("Authenticating with Patreon...")
         try:
             self.session, self.csrf_token, self.user_info = auth.setup_authenticated_session()
-            self._user_out(f"✓ Logged in as: {self.user_info['name']}")
-            self._user_out(f"  Email: {self.user_info['email']}")
-            self._user_out(f"  Active memberships: {self.user_info['pledge_count']}")
+            if self.user_info:
+                self._user_out(f"✓ Logged in as: {self.user_info.get('name', 'Unknown')}")
+                self._user_out(f"  Email: {self.user_info.get('email', 'Unknown')}")
+                self._user_out(f"  Active memberships: {self.user_info.get('pledge_count', 0)}")
             self.health_monitor.record_auth_success()
             return True
         except FileNotFoundError as e:
@@ -118,8 +120,6 @@ class PatreonNotificationMonitor:
             if not self.quiet:
                 print(f"\n✗ Authentication failed: {e}")
                 if config.SHOW_FULL_ERRORS:
-                    import traceback
-
                     traceback.print_exc()
             self.health_monitor.record_auth_failure(e)
             return False
